@@ -151,6 +151,8 @@ if args.plot:
     histOut = plt.hist(
         goodData,
         bins=binList, normed=False, facecolor='green', alpha=0.75)
+    plt.xlabel(r'Duration (days)')
+    plt.ylabel(r'\# of Rentals')
     if args.save:
         plt.savefig('./plots/RentalDurations.jpg', dpi=DPI)
         if args.pdf:
@@ -158,11 +160,13 @@ if args.plot:
 
 
 # Estimate very simple probabilities for the rental using ratios
-# ------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------------------------
 if args.ratios:
     print 'Computing simple ratio estimates of probabilities'
     # First find all the unique promotions
     promoList = list(set(dataFile['Promotion Name'].values.tolist()))
+    reOrder = [5, 3, 1, 2, 0, 4]
+    promoList = [promoList[index] for index in reOrder]
     numPromos = len(promoList)
 
     # Now do simple counts to get the raw ratios
@@ -175,7 +179,26 @@ if args.ratios:
                 countsArray[promoNum, 0] += 1.0
     # Dictionary - key: promoName; value: [raw likelihood, number of datapoints]
     rentedProbs = dict((promo, [countsArray[counter, 0]/countsArray[counter, 1],
-                                int(countsArray[counter, 1])]) for counter, promo in enumerate(promoList))
+                                int(countsArray[counter, 0]), int(countsArray[counter, 1])])
+                       for counter, promo in enumerate(promoList))
+    if args.plot:
+        plt.clf()
+        plt.figure(1, figsize=(fwid, fhgt))
+        plt.barh(range(len(rentedProbs)), [value[0] for value in rentedProbs.values()], align='center')
+        plt.yticks(range(len(rentedProbs)), rentedProbs.keys())
+        plt.ylabel(r'Promotion Type')
+        plt.xlabel(r'$\mathrm{Reservation} \rightarrow \mathrm{Rental}$')
+        plt.xlim(0.0, 1.0)
+        ax = plt.gca()
+        ax.tick_params(axis='both', which='major', labelsize=14)
+        ax.tick_params(axis='both', which='minor', labelsize=14)
+        if args.save:
+            plt.savefig('./plots/RentalProbabilities.jpg', dpi=DPI)
+            if args.pdf:
+                plt.savefig('./plots/RentalProbabilities.pdf', dpi=DPI)
+
+# Examine the rate v/s the duration
+# ------------------------------------------------------------------------------------------------------------
 
 if args.stop:
     pdb.set_trace()
