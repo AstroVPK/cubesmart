@@ -49,10 +49,10 @@ if args.ion:
 # Read in the data as a pandas DataFrame
 # ------------------------------------------------------------------------------------------------------------
 
-if os.path.isfile(os.path.join(os.path.join(args.pwd, 'data/rentalData.pkl'))):
+if os.path.isfile(os.path.join(os.path.join(args.pwd, 'data/goodRentalData.pkl'))):
     print 'Reading in pickled data file...'
-    dataFile = pickle.load(open(os.path.join(args.pwd, 'data/rentalData.pkl'), 'rb'))
-    numRecords = dataFile['Account ID'].count()
+    goodDataFile = pickle.load(open(os.path.join(args.pwd, 'data/goodRentalData.pkl'), 'rb'))
+    numRecords = goodDataFile['Account ID'].count()
     lastRec = numRecords - 1
 else:
     print 'Reading in original excel file...'
@@ -65,11 +65,7 @@ else:
     # Now clean the data to remove bad entries etc...
     # --------------------------------------------------------------------------------------------------------
 
-    notRented = np.ones(numRecords, dtype=bool)
-    badReserveDate = np.zeros(numRecords, dtype=bool)
-    badMoveInDate = np.zeros(numRecords, dtype=bool)
-    badMoveOutDate = np.zeros(numRecords, dtype=bool)
-    badDate = np.zeros(numRecords, dtype=bool)
+    badDate = list()
     durationArr = np.zeros(numRecords, dtype=float)
     notMovedOutArr = np.zeros(numRecords, dtype=bool)
     infoStr = 'ID: %d; Rented? %r; ReserveDate: %s; MoveInDate: %s; MoveOutDate %s;\
@@ -86,24 +82,24 @@ else:
                 dataFile['Move Out Date'].values[recNum])
 
         # Check for bad reserve date.
-        if ((dataFile['ReserveDate'].values[recNum] < dataFile['ReserveDate'].values[0]) or
+        if ((dataFile['ReserveDate'].values[recNum] < dataFile['Move In Date'].values[5]) or
                 (dataFile['ReserveDate'].values[recNum] > dataFile['Move In Date'].values[lastRec])):
-            badReserveDate[recNum] = True
+            badDate.append(recNum)
         # Check for bad move in date
-        if ((dataFile['Move In Date'].values[recNum] < dataFile['ReserveDate'].values[0]) or
+        if ((dataFile['Move In Date'].values[recNum] < dataFile['Move In Date'].values[5]) or
                 (dataFile['Move In Date'].values[recNum] > dataFile['Move In Date'].values[lastRec])):
-            badMoveInDate[recNum] = True
+            badDate.append(recNum)
         # If rented, check if moved out and compute duration of stay.
         if dataFile['Rented?'].values[recNum]:  # Was the unit rented?
             if not pd.isnull(dataFile['Move Out Date'].values[recNum]):  # Do we know the move out date?
                 # Check for bad move out date.
                 if ((dataFile['Move Out Date'].values[recNum] <
-                     dataFile['ReserveDate'].values[0]) or
+                     dataFile['Move In Date'].values[5]) or
                     (dataFile['Move Out Date'].values[recNum] >
                      dataFile['Move In Date'].values[lastRec]) or
                     (dataFile['Move Out Date'].values[recNum] <
                      dataFile['Move In Date'].values[recNum])):
-                    badMoveOutDate[recNum] = True
+                    badDate.append(recNum)
                 # Compute rental duration = move out date - move in date
                 duration = dataFile['Move Out Date'].values[recNum] - dataFile['Move In Date'].values[recNum]
                 notMovedOut = True
@@ -122,34 +118,26 @@ else:
                                durationArr[recNum]*24,
                                dataFile['Promotion Name'].values[recNum])
             notMovedOutArr[recNum] = notMovedOut
-            badDate[recNum] = badReserveDate[recNum] + badMoveInDate[recNum] + badMoveOutDate[recNum]
-            notRented[recNum] = False
-        else:
-            notRented[recNum] = True
-    dataFile['Not Rented?'] = notRented
-    dataFile['Bad Reserve Date'] = badReserveDate
-    dataFile['Bad Move In Date'] = badMoveInDate
-    dataFile['Bad Move Out Date'] = badMoveOutDate
-    dataFile['Bad Date'] = badDate
     dataFile['Rental Duration'] = durationArr
     dataFile['Not Moved Out?'] = notMovedOutArr
+    badDate = list(set(badDate))
+    goodDataFile = dataFile.drop(dataFile.index[badDate])
+    numRecords = goodDataFile['Account ID'].count()
+    lastRec = numRecords - 1
 
     # Dump the processed data as a pickle file so that we don't have to keep re-doing this
     # --------------------------------------------------------------------------------------------------------
-    pickle.dump(dataFile, open(os.path.join(args.pwd, 'data/rentalData.pkl'), 'wb'))
+    pickle.dump(goodDataFile, open(os.path.join(args.pwd, 'data/goodRentalData.pkl'), 'wb'))
 
 # Histogram the rental durations
 # ------------------------------------------------------------------------------------------------------------
 
 if args.plot:
     print 'Making histogram of durations'
-    binList = [0.0, 0.1, Overnight, 1.0, 30.0, 60.0, 90.0, 120, 150, 180.0, 210, 240, 270.0, 300.0, 330.0,
-               360.0, 390.0, 420.0, 450.0, 480.0, 510.0, 540.0, 570.0, 600.0]
-    goodData = dataFile['Rental Duration'].values[dataFile['Not Rented?'].values +
-                                                  dataFile['Bad Date'].values +
-                                                  dataFile['Not Moved Out?'].values == 0]
+    binList = [0.0, 0.1, Overnight, 1.0] + [float(i) for i in xrange(30, 630, 30)]
+    goodData = goodDataFile[(goodDataFile['Rented?'] != 0) & (goodDataFile['Not Moved Out?'] != 0)]
     histOut = plt.hist(
-        goodData,
+        goodData['Rental Duration'].values,
         bins=binList, normed=False, facecolor='green', alpha=0.75)
     plt.xlabel(r'Duration (days)')
     plt.ylabel(r'\# of Rentals')
@@ -164,7 +152,7 @@ if args.plot:
 if args.ratios:
     print 'Computing simple ratio estimates of probabilities'
     # First find all the unique promotions
-    promoList = list(set(dataFile['Promotion Name'].values.tolist()))
+    promoList = list(set(goodDataFile['Promotion Name'].values.tolist()))
     reOrder = [5, 3, 1, 2, 0, 4]
     promoList = [promoList[index] for index in reOrder]
     numPromos = len(promoList)
@@ -172,11 +160,10 @@ if args.ratios:
     # Now do simple counts to get the raw ratios
     countsArray = np.zeros((numPromos, 2), dtype=float)
     for i in xrange(numRecords):
-        if dataFile['Bad Date'].values[i] == 0:
-            promoNum = promoList.index(dataFile['Promotion Name'].values[i])
-            countsArray[promoNum, 1] += 1.0
-            if dataFile['Rented?'].values[i] != 0:
-                countsArray[promoNum, 0] += 1.0
+        promoNum = promoList.index(goodDataFile['Promotion Name'].values[i])
+        countsArray[promoNum, 1] += 1.0
+        if goodDataFile['Rented?'].values[i] != 0:
+            countsArray[promoNum, 0] += 1.0
     # Dictionary - key: promoName; value: [raw likelihood, number of datapoints]
     rentedProbs = dict((promo, [countsArray[counter, 0]/countsArray[counter, 1],
                                 int(countsArray[counter, 0]), int(countsArray[counter, 1])])
