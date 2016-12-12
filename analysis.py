@@ -3,8 +3,10 @@ import os
 import argparse
 import cPickle as pickle
 import numpy as np
+import scipy.interpolate
 import pandas as pd
 import matplotlib.pyplot as plt
+import warnings
 import pdb
 
 import patsy
@@ -194,7 +196,8 @@ storageData = cleanData[(cleanData['CarSpot'] == 0) &
 numStored = storageData['AccountID'].count()
 
 # Create a data frame of just the rentals for convenience
-rentedData = cleanData[(cleanData['Rented'] != 0) &
+rentedData = cleanData[(cleanData['CarSpot'] == 0) &
+                       (cleanData['Rented'] != 0) &
                        (cleanData['PromotionName'] != 'ThreeMonthsHalfOff')]
 numRented = rentedData['AccountID'].count()
 
@@ -221,22 +224,45 @@ if args.plot:
     Foo = movedOutData['FootRate']
     plt.clf()
     plt.figure(1, figsize=(args.width, args.height))
-    for i, grp in enumerate(reversed(groupList)):
-        plt.scatter(Dur[grp], np.log10(Foo[grp]),
+    for i, grp in enumerate(groupList):
+        plt.scatter(Foo[grp], Dur[grp],
                     c=bmap.hex_colors[i],
-                    marker='.', edgecolors='none', label=promoList[i])
-    plt.xlim(np.min(rentedData['RentalDuration'].values), np.max(rentedData['RentalDuration'].values))
-    plt.ylim(np.min(np.log10(rentedData['FootRate'].values)), np.max(np.log10(rentedData['FootRate'].values)))
+                    marker='.', edgecolors='none',
+                    label=r'%s: $\kappa = \$ %3.2f$'%(promoList[i], np.mean(Foo[grp].values)))
+    plt.ylim(np.min(rentedData['RentalDuration'].values), np.max(rentedData['RentalDuration'].values))
+    plt.xlim(np.min(rentedData['FootRate'].values), np.max(rentedData['FootRate'].values))
     plt.legend()
-    plt.xlabel('Rental Duration (days)')
-    plt.ylabel('$\log_{10}$ Rate Per Square Foot ($\$/ft^{2}$)')
+    plt.ylabel('Rental Duration (days)')
+    plt.xlabel('Rate Per Square Foot ($\$/ft^{2}$)')
     if args.save:
         plt.savefig('./plots/FootRateVSDurations.jpg', dpi=args.dpi)
         if args.pdf:
             plt.savefig('./plots/FootRateVSDurations.pdf', dpi=args.dpi)
 
+    NPRate = np.mean(Foo[NP].values)
+    FMHORate = np.mean(Foo[FMHO].values)
+    TwMHORate = np.mean(Foo[TwMHO].values)
+    ThMHORate = np.mean(Foo[ThMHO].values)
+    FMFRate = np.mean(Foo[FMF].values)
+    TMFRate = np.mean(Foo[TMF].values)
+
 # Use survival analysis to study the rental durations since our data is right-censored
 # ------------------------------------------------------------------------------------------------------------
+
+
+# First, a function to compute the median time at which the renter moves out
+def getMedianTime(kmf, order=3):
+    if not np.isinf(kmf.median_):
+        return kmf.median_
+    else:  # Estimate the median duration by fitting the survival function
+        warnings.warn('Un-able to estimate median parametrically - using smoothing spline')
+        raw = kmf.survival_function_[kmf.survival_function_.columns[0]].values
+        index = np.where(raw == raw[-1])[0][0]
+        logt = np.log10(kmf.timeline[0: index])
+        logy = np.log10(kmf.survival_function_[kmf.survival_function_.columns[0]].values[0: index])
+        spl = scipy.interpolate.UnivariateSpline(logy[1:], logt[1:], k=order)
+        medianVal = math.pow(10.0, spl(-0.3010299956639812))  # -0.3010299956639812 = log10(0.5)
+        return medianVal
 
 if args.survival:
     print 'Performing survival analysis'
@@ -246,11 +272,13 @@ if args.survival:
 
     # Get the Kaplan-Meier Estimate for some promotion vs no promotion
     kmf.fit(Dur[NP], event_observed=MovedOut[NP], label='No Promotion')
-    print 'Median Rental Duration when no promotion" was offered:', kmf.median_
+    binaryNoPromoDur = getMedianTime(kmf)
+    print 'Median Rental Duration when no promotion was offered: ', binaryNoPromoDur
     if args.plot:
         ax = kmf.plot()
     kmf.fit(Dur[~NP], MovedOut[~NP], label='Some Promotion')
-    print 'Median Rental Duration when some promotion was offered:', kmf.median_
+    binaryPromoDur = getMedianTime(kmf)
+    print 'Median Rental Duration when some promotion was offered:', binaryPromoDur
     if args.plot:
         kmf.plot(ax=ax)
         fig = plt.gcf()
@@ -266,25 +294,31 @@ if args.survival:
     # Now get the Kaplan-Meier Estimate for each promotion
     # First make one plot showing all cases
     kmf.fit(Dur[NP], MovedOut[NP], label='No Promotion')
-    print 'Median Rental Duration when "No Promotion" was offered:', kmf.median_
+    NPDur = getMedianTime(kmf)
+    print 'Median Rental Duration when "No Promotion" was offered:', NPDur
     if args.plot:
         ax = kmf.plot()
-    kmf.fit(Dur[TMF], MovedOut[TMF], label='Two Months Free')
-    print 'Median Rental Duration when "Two Months Free" was offered:', kmf.median_
-    if args.plot:
-        kmf.plot(ax=ax)
     kmf.fit(Dur[FMF], MovedOut[FMF], label='First Month Free')
-    print 'Median Rental Duration when "First Month Free" was offered:', kmf.median_
-    if args.plot:
-        kmf.plot(ax=ax)
-    kmf.fit(Dur[TwMHO], MovedOut[TwMHO], label='Two Months Half Off')
-    print 'Median Rental Duration when "Two Months Half Off" was offered:', kmf.median_
+    FMFDur = getMedianTime(kmf)
+    print 'Median Rental Duration when "First Month Free" was offered:', FMFDur
     if args.plot:
         kmf.plot(ax=ax)
     kmf.fit(Dur[FMHO], MovedOut[FMHO], label='First Month Half Off')
-    print 'Median Rental Duration when "First Month Half Off" was offered:', kmf.median_
+    FMHODur = getMedianTime(kmf)
+    print 'Median Rental Duration when "First Month Half Off" was offered:', FMHODur
     if args.plot:
         kmf.plot(ax=ax)
+    kmf.fit(Dur[TMF], MovedOut[TMF], label='Two Months Free')
+    TwMFDur = getMedianTime(kmf)
+    print 'Median Rental Duration when "Two Months Free" was offered:', TwMFDur
+    if args.plot:
+        kmf.plot(ax=ax)
+    kmf.fit(Dur[TwMHO], MovedOut[TwMHO], label='Two Months Half Off')
+    TwMHODur = getMedianTime(kmf)
+    print 'Median Rental Duration when "Two Months Half Off" was offered:', TwMHODur
+    if args.plot:
+        kmf.plot(ax=ax)
+    if args.plot:
         fig = plt.gcf()
         fig.set_size_inches(args.width, args.height)
         if args.save:
@@ -292,7 +326,7 @@ if args.survival:
             if args.pdf:
                 fig.savefig('./plots/DurationsSurvival_Breakdown_Overlaid.pdf', dpi=args.dpi)
     # Now make one plot with individual subplots showing each case
-    fig = plt.figure(1, figsize=(args.width, args.height))
+    fig = plt.figure(2, figsize=(args.width, args.height))
     fig.clf()
     ax = fig.add_subplot(111)    # The big subplot
     # Turn off axis lines and ticks of the big subplot
@@ -345,6 +379,54 @@ if args.survival:
             if args.pdf:
                 figD.savefig('./plots/Hazard.pdf', dpi=args.dpi)
 
+    # Lets do a survival regression
+    if os.path.isfile(os.path.join(os.path.join(args.pwd, 'data/analysis_survival.pkl'))):
+        print 'Reading in pickled survival regression data file...'
+        with open(os.path.join(args.pwd, 'data/analysis_survival.pkl'), 'rb') as inFile:
+            X = pickle.load(inFile)
+            aaf = pickle.load(inFile)
+    else:
+        print 'Computing survival regression...'
+        X = patsy.dmatrix('AccountID + FootRate + PromotionName - 1',
+                          rentedData, return_type="dataframe")
+        X = X.rename(columns={'PromotionName[NoPromotion]': 'NoPromotion',
+                              'PromotionName[FirstMonthFree]': 'FirstMonthFree',
+                              'PromotionName[FirstMonthHalfOff]': 'FirstMonthHalfOff',
+                              'PromotionName[TwoMonthsFree]': 'TwoMonthsFree',
+                              'PromotionName[TwoMonthsHalfOff]': 'TwoMonthsHalfOff'})
+        aaf = lifelines.AalenAdditiveFitter(coef_penalizer=1.0, fit_intercept=True)
+        X['Dur'] = rentedData['RentalDuration']
+        X['MOut'] = rentedData['MovedOut']
+        aaf.fit(X[1:], 'Dur', event_col='MOut')
+        with open(os.path.join(args.pwd, 'data/analysis_survival.pkl'), 'wb') as outFile:
+            pickle.dump(X, outFile)
+            pickle.dump(aaf, outFile)
+
+    if args.plot:
+        aaf.plot(columns=['NoPromotion', 'FirstMonthFree', 'FirstMonthHalfOff', 'TwoMonthsFree',
+                          'TwoMonthsHalfOff', 'FootRate', 'baseline'], ix=slice(0, 500))
+        fig = plt.gcf()
+        fig.set_size_inches(args.width, args.height)
+        if args.save:
+            fig.savefig('./plots/RegressedCumulativeHazards.jpg', dpi=args.dpi)
+            if args.pdf:
+                fig.savefig('./plots/RegressedCumulativeHazards.pdf', dpi=args.dpi)
+
+    '''
+    delta_expec = np.zeros(numRecords, dtype=float)
+    delta_median = np.zeros(numRecords, dtype=float)
+    for recNum in xrange(numStored):
+        ix = (storageData['AccountID'] == storageData['AccountID'].values[recNum])
+        entry = X.ix[ix]
+        trueVal = storageData['AccountID'].values[recNum]
+        delta_expec[recNum] = trueVal - aaf.predict_expectation(entry)[0].values[0]
+        delta_median[recNum] = trueVal - aaf.predict_median(entry)
+    storageData['DeltaExpec'] = delta_expec
+    storageData['DeltaMedian'] = delta_median
+    plt.show()
+    pdb.set_trace()
+    '''
+
     # Finally, make a histogram of the rental durations in the case where the renter has checked out.
     if args.plot:
         plt.clf()
@@ -389,7 +471,7 @@ if args.ratios:
                        for counter, promo in enumerate(promoList))
     if args.plot:
         plt.clf()
-        plt.figure(1, figsize=(args.width, args.height))
+        plt.figure(3, figsize=(args.width, args.height))
         plt.barh(range(len(rentedProbs)), [value[0] for value in rentedProbs.values()], align='center')
         plt.yticks(range(len(rentedProbs)), rentedProbs.keys())
         plt.ylabel(r'Promotion Type')
@@ -403,26 +485,9 @@ if args.ratios:
             if args.pdf:
                 plt.savefig('./plots/RentalProbabilities.pdf', dpi=args.dpi)
 
-# Now lets do a logistic regression
+# Lets do a logistic regression
 # ------------------------------------------------------------------------------------------------------------
 
-y, X = patsy.dmatrices('Rented ~ FootRate + RentalDuration + C(PromotionName, Treatment("NoPromotion"))',
-                       storageData, return_type="dataframe")
-X = X.rename(columns={'C(PromotionName, Treatment("NoPromotion"))[T.FirstMonthFree]': 'FirstMonthFree',
-                      'C(PromotionName, Treatment("NoPromotion"))[T.FirstMonthHalfOff]': 'FirstMonthHalfOff',
-                      'C(PromotionName, Treatment("NoPromotion"))[T.TwoMonthsFree]': 'TwoMonthsFree',
-                      'C(PromotionName, Treatment("NoPromotion"))[T.TwoMonthsHalfOff]': 'TwoMonthsHalfOff'})
-y = y['Rented[True]'].values
-
-model = sklearn.linear_model.LogisticRegression()
-model = model.fit(X, y)
-print model.score(X, y)
-print y.mean()
-print pd.DataFrame(zip(X.columns, np.transpose(model.coef_)))
-
-# Now lets do a logistic regression again but do promotion vs no promotion
-# ------------------------------------------------------------------------------------------------------------
-'''
 y, X = patsy.dmatrices('Rented ~ FootRate + C(PromotionName, Treatment("NoPromotion"))',
                        storageData, return_type="dataframe")
 X = X.rename(columns={'C(PromotionName, Treatment("NoPromotion"))[T.FirstMonthFree]': 'FirstMonthFree',
@@ -436,6 +501,102 @@ model = model.fit(X, y)
 print model.score(X, y)
 print y.mean()
 print pd.DataFrame(zip(X.columns, np.transpose(model.coef_)))
-'''
+
+
+# Now lets compute the revenue curve
+# ------------------------------------------------------------------------------------------------------------
+def durToMon(dur):
+    return int(math.ceil(dur%30.0)) - 3
+
+numSamples = 100
+trialFootRate = np.linspace(0.3, 4.0, numSamples)
+trialProb = np.zeros((5, numSamples))
+trialRevenue = np.zeros((5, numSamples))
+currRevenue = np.zeros(5)
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    for i in xrange(numSamples):
+        trialProb[0, i] = model.predict_proba(np.array([1.0, 0.0, 0.0, 0.0, 0.0, trialFootRate[i]]))[0][1]
+        trialRevenue[0, i] = (3.0 + durToMon(NPDur))*trialProb[0, i]*trialFootRate[i]
+        trialProb[1, i] = model.predict_proba(np.array([1.0, 1.0, 0.0, 0.0, 0.0, trialFootRate[i]]))[0][1]
+        trialRevenue[1, i] = (2.0 + durToMon(FMFDur))*trialProb[1, i]*trialFootRate[i]
+        trialProb[2, i] = model.predict_proba(np.array([1.0, 0.0, 1.0, 0.0, 0.0, trialFootRate[i]]))[0][1]
+        trialRevenue[2, i] = (2.5 + durToMon(FMHODur))*trialProb[2, i]*trialFootRate[i]
+        trialProb[3, i] = model.predict_proba(np.array([1.0, 0.0, 0.0, 1.0, 0.0, trialFootRate[i]]))[0][1]
+        trialRevenue[3, i] = (1.0 + durToMon(TwMFDur))*trialProb[3, i]*trialFootRate[i]
+        trialProb[4, i] = model.predict_proba(np.array([1.0, 0.0, 0.0, 0.0, 1.0, trialFootRate[i]]))[0][1]
+        trialRevenue[4, i] = (1.5 + durToMon(TwMHODur))*trialProb[4, i]*trialFootRate[i]
+    currRevenue[0] = (3.0 + durToMon(NPDur))*model.predict_proba(
+        np.array([1.0, 0.0, 0.0, 0.0, 0.0, NPRate]))[0][1]*NPRate
+    print 'Current revenue No Promotion: ', currRevenue[0]
+    currRevenue[1] = (2.0 + durToMon(FMFDur))*model.predict_proba(
+        np.array([1.0, 1.0, 0.0, 0.0, 0.0, FMFRate]))[0][1]*FMFRate
+    print 'Current revenue First Month Free: ', currRevenue[1]
+    currRevenue[2] = (2.5 + durToMon(FMHODur))*model.predict_proba(
+        np.array([1.0, 0.0, 1.0, 0.0, 0.0, FMHORate]))[0][1]*FMHORate
+    print 'Current revenue First Month Half Off: ', currRevenue[2]
+    currRevenue[3] = (1.0 + durToMon(TwMFDur))*model.predict_proba(
+        np.array([1.0, 0.0, 0.0, 1.0, 0.0, TMFRate]))[0][1]*TMFRate
+    print 'Current revenue Two Months Free: ', currRevenue[3]
+    currRevenue[4] = (2.0 + durToMon(TwMHODur))*model.predict_proba(
+        np.array([1.0, 0.0, 0.0, 0.0, 1.0, TwMHORate]))[0][1]*TwMHORate
+    print 'Current revenue Two Months Half Off: ', currRevenue[4]
+if plt.plot:
+    plt.figure(4, figsize=(args.width, args.height))
+    plt.clf()
+    plt.plot(trialFootRate[:], trialProb[0, :], c='#e41a1c', label='No Promotion')
+    plt.plot(trialFootRate[:], trialProb[1, :], c='#377eb8', label='First Month Free')
+    plt.plot(trialFootRate[:], trialProb[2, :], c='#4daf4a', label='First Month Half Off')
+    plt.plot(trialFootRate[:], trialProb[3, :], c='#984ea3', label='Two Months Free')
+    plt.plot(trialFootRate[:], trialProb[4, :], c='#ff7f00', label='Two Months Half Off')
+plt.legend()
+plt.xlabel('$\log_{10}$ Rate Per Square Foot ($\$/ft^{2}$)')
+plt.ylabel('Likelihood')
+if args.save:
+    plt.savefig('./plots/ProbabilityCurve.jpg', dpi=args.dpi)
+    if args.pdf:
+        plt.savefig('./plots/ProbabilityCurve.pdf', dpi=args.dpi)
+if plt.plot:
+    plt.figure(5, figsize=(args.width, args.height))
+    plt.clf()
+
+    plt.plot(trialFootRate[:], trialRevenue[0, :], c='#e41a1c', label='No Promotion')
+    plt.axvline(x=trialFootRate[np.where(trialRevenue[0, :] == np.max(trialRevenue[0, :]))],
+                ls='dashed', c='#e41a1c', label='No Promotion Max Revenue Rate')
+    plt.axvline(x=NPRate, ls='dotted', c='#e41a1c',
+                label='No Promotion Avg. Rate')
+
+    plt.plot(trialFootRate[:], trialRevenue[1, :], c='#377eb8', label='First Month Free')
+    plt.axvline(x=trialFootRate[np.where(trialRevenue[1, :] == np.max(trialRevenue[1, :]))],
+                ls='dashed', c='#377eb8', label='First Month Free Max Revenue Rate')
+    plt.axvline(x=FMFRate, ls='dotted', c='#377eb8',
+                label='First Month Free Avg. Rate')
+
+    plt.plot(trialFootRate[:], trialRevenue[2, :], c='#4daf4a', label='First Month Half Off')
+    plt.axvline(x=trialFootRate[np.where(trialRevenue[2, :] == np.max(trialRevenue[2, :]))],
+                ls='dashed', c='#4daf4a', label='First Month Half Off Max Revenue Rate')
+    plt.axvline(x=FMHORate, ls='dotted', c='#4daf4a',
+                label='First Month Half Off Avg. Rate')
+
+    plt.plot(trialFootRate[:], trialRevenue[3, :], c='#984ea3', label='Two Months Free')
+    plt.axvline(x=trialFootRate[np.where(trialRevenue[3, :] == np.max(trialRevenue[3, :]))],
+                ls='dashed', c='#984ea3', label='Two Months Free Max Revenue Rate')
+    plt.axvline(x=TMFRate, ls='dotted', c='#984ea3',
+                label='Two Months Free Avg. Rate')
+
+    plt.plot(trialFootRate[:], trialRevenue[4, :], c='#ff7f00', label='Two Months Half Off')
+    plt.axvline(x=trialFootRate[np.where(trialRevenue[4, :] == np.max(trialRevenue[4, :]))],
+                ls='dashed', c='#ff7f00', label='Two Months Half Off Max Revenue Rate')
+    plt.axvline(x=TwMHORate, ls='dotted', c='#ff7f00',
+                label='Two Months Half Off Avg. Rate')
+plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
+           ncol=2, mode="expand", borderaxespad=0.0)
+plt.xlabel('Rate Per Square Foot ($\$/ft^{2}$)')
+plt.ylabel('Revenue ($\$/ft^{2}$)')
+if args.save:
+    plt.savefig('./plots/RevenueCurve.jpg', dpi=args.dpi)
+    if args.pdf:
+        plt.savefig('./plots/RevenueCurve.pdf', dpi=args.dpi)
+
 if args.stop:
     pdb.set_trace()
