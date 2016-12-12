@@ -136,22 +136,43 @@ Figure~\ref{fig:RevenueCurve} plots the revenue curves inferred from the surviva
 
 We have performed two statistical analyses in the process of generating the revenue curves of Figure~\ref{fig:RevenueCurve}---a survival analysis \& a logistic regression analysis. We have made a number of simplifications and approximations in the interest of time. To make the results more accurate, we that a survival regression analysis be performed of the rental durations against the promotion types, the storage unit sizes (categorical), the actual rental market rate, the presence or absence of the $10\%$ promotional discount, \& the move-in month. We speculate that there may exist a strong trend in the rental duration with the rental month e.g. from students looking for summer storage etc... With more data, we should also consider the rental store location (rather than the broader geographic location) to model trends as function of distance from major population centers. Additionally, we could also take the survey response answers into consideration as habitual renters may be moving into/out of CubeSmart locations in  order to reduce their rental costs. The survival regression model can be used to predict mean/median rental durations for different combinations of the underlying regressors. Similarly, the regression analysis performed to determine the rental propensity with rental rate should be made more sophisticated by including the added regressors mentioned above.
 
-We can use the regression model and the rental duration estimates computed earlier to determine how much revenue the promotions are currently generating for CubeSmart at the average rental rate per square foot currently being charged to customers. The current revenue per square foot is
+We can use the regression model and the rental duration estimates computed earlier to determine how much likelier the promotions make reservations $\rightarrow$ rentals as well as how much revenue the promotions are currently generating for CubeSmart at the average rental rate per square foot currently being charged to customers. The current revenue per square foot is
 
 \begin{center}
-    \begin{tabular}{ | c | c |}
+    \begin{tabular}{ | c | c | c |}
     \hline
-    Promotion & Revenue ($\$/ft^{2}$) \\ \hline
-    No Promotion & 13.48 \\
-    First Month Half Off & 15.09 \\
-    Two Months Half Off & 19.53 \\
-    First Month Free & 9.15 \\
-    Two Months Free & 4.23 \\
+    Promotion & $p(r_{\rightarrow} | \Theta, \kappa_{\mathrm{curr}})$ & Revenue ($\$/ft^{2}$) \\ \hline
+    No Promotion & 0.610481 & 13.48 \\
+    First Month Half Off & 0.726427 & 15.09 \\
+    Two Months Half Off & 0.633079 & 19.53 \\
+    First Month Free & 0.706704 & 9.15 \\
+    Two Months Free & 0.239965 & 4.23 \\
     \hline
     \end{tabular}
 \end{center}
 
-In conclusion, CubeSmart seems to be loosing money by offering the popular First Month Free and Two Months Free promotions. Both the First Month Half Off and Two Months Half Off promotions generate increased revenue for CubeSmart as compared to not offering any promotions at all. The authors suspect that the free month proposals are used by a large number of short-term renters who move out before, or soon after the end of the promotion period. In contrast, the half-off promotions are probably attracting regular users of personal storage who rent for a much longer duration at the slightly higher base rate commanded by the reservations tied to these promotions resulting in the increased revenue after the expiration of the promotion period. At the same time, the free month promotions carry real advertising value in terms of familiarizing potential future long-term customers with CubeSmart as the the provider of their storage needs. An alternative strategy may be to offer free storage to customers who move out within a very short duration (say 1 - 2 days) instead of the free month offers.
+In conclusion, we can answer a few interesting questions -
+
+Q. Do the promotions result in more rentals?\\
+A. All the promotions other than the Two Months Free promotion result in a higher rate of rentals as compared to when customers are offered no promotions at all.
+
+Q. Do the promotions result in increased revenue?\\
+A. Only the half-off promotions result in increased revenue for CubeSmart. The free-month/s promotions result in considerably reduced revenue for CubeSmart. This probably due to the nature of the storage requirements (short term as opposed to long term) of the customers who use the free-month promotions.
+
+Q. Based on the "cost" (in lost revenue) of providing free month promotions, how much of an increase in rental or reservation volume would CubeSmart have to see to "break even" on the promotion?\\
+A. Lets assume that CubeSmart has to choose between offering $2$ promotionless rentals and offering $x$ promotionless less rental $+ 1$ Free Month rental. Using the revenue values from the revenue table, we see that
+\begin{equation*}
+    2 \times 13.48 = 9.15 + x \times 13.48 \implies x = \frac{2 \times 13.48 - 9.15}{13.48} \implies x = 1.321\ \mathrm{rentals},
+\end{equation*}
+i.e. CubeSmart would have to see a $2.321/2 \sim 16\%$ increase in the number of rentals coming in for it to be possible for CubeSmart to break even on offering the Free Month promotion. Similar values can be easily computed for the other promotions.
+
+Q. Free month promotions are effectively a discount for the customer, though hopefully generate some ultimate benefit to revenue.  Using the dataset, can you assess how much incremental revenue is generated (or lost) from the free month promotions?\\
+A. Please look at the values in the likelihood \& revenue table for the median lifetime revenue per square foot expected from the rentals with and without the promotions.
+
+Q. To what degree does the length of customers' stays impact your responses above and how should it be considered?  What is the most appropriate way to consider customer length of stay, given the number of customers still renting?\\
+A. Since the rate per square foot for the rental is higher when offered with a promotion, CubeSmart starts turning a larger and larger profit as the rental duration increases. A survival regression analysis will be very helpful in further illuminating the rental duration behavior.
+
+CubeSmart seems to be loosing money by offering the popular First Month Free and the less popular Two Months Free promotions. Both the First Month Half Off and Two Months Half Off promotions generate increased revenue for CubeSmart as compared to not offering any promotions at all. The author suspects that the free month proposals are used by a large number of short-term renters who move out before, or soon after the end of the promotion period. In contrast, the half-off promotions are probably attracting regular users of personal storage who rent for a much longer duration at the slightly higher base rate commanded by the reservations tied to these promotions resulting in the increased revenue after the expiration of the promotion period. At the same time, the free month promotions carry real advertising value in terms of familiarizing potential future long-term customers with CubeSmart as the the provider of their storage needs. An alternative strategy may be to offer free storage to customers who move out within a very short duration (say 1 - 2 days) instead of the free month offers.
 
 \begin{figure}
 	\includegraphics[width=0.9\columnwidth]{plots/FootRateVSDurations.jpg}

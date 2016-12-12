@@ -512,6 +512,7 @@ numSamples = 100
 trialFootRate = np.linspace(0.3, 4.0, numSamples)
 trialProb = np.zeros((5, numSamples))
 trialRevenue = np.zeros((5, numSamples))
+currProb = np.zeros(5)
 currRevenue = np.zeros(5)
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
@@ -526,21 +527,26 @@ with warnings.catch_warnings():
         trialRevenue[3, i] = (1.0 + durToMon(TwMFDur))*trialProb[3, i]*trialFootRate[i]
         trialProb[4, i] = model.predict_proba(np.array([1.0, 0.0, 0.0, 0.0, 1.0, trialFootRate[i]]))[0][1]
         trialRevenue[4, i] = (1.5 + durToMon(TwMHODur))*trialProb[4, i]*trialFootRate[i]
-    currRevenue[0] = (3.0 + durToMon(NPDur))*model.predict_proba(
-        np.array([1.0, 0.0, 0.0, 0.0, 0.0, NPRate]))[0][1]*NPRate
-    print 'Current revenue No Promotion: ', currRevenue[0]
-    currRevenue[1] = (2.0 + durToMon(FMFDur))*model.predict_proba(
-        np.array([1.0, 1.0, 0.0, 0.0, 0.0, FMFRate]))[0][1]*FMFRate
-    print 'Current revenue First Month Free: ', currRevenue[1]
-    currRevenue[2] = (2.5 + durToMon(FMHODur))*model.predict_proba(
-        np.array([1.0, 0.0, 1.0, 0.0, 0.0, FMHORate]))[0][1]*FMHORate
-    print 'Current revenue First Month Half Off: ', currRevenue[2]
-    currRevenue[3] = (1.0 + durToMon(TwMFDur))*model.predict_proba(
-        np.array([1.0, 0.0, 0.0, 1.0, 0.0, TMFRate]))[0][1]*TMFRate
-    print 'Current revenue Two Months Free: ', currRevenue[3]
-    currRevenue[4] = (2.0 + durToMon(TwMHODur))*model.predict_proba(
-        np.array([1.0, 0.0, 0.0, 0.0, 1.0, TwMHORate]))[0][1]*TwMHORate
-    print 'Current revenue Two Months Half Off: ', currRevenue[4]
+    currProb[0] = model.predict_proba(np.array([1.0, 0.0, 0.0, 0.0, 0.0, NPRate]))[0][1]
+    currRevenue[0] = (3.0 + durToMon(NPDur))*currProb[0]*NPRate
+    print 'No Promotion - Current prob: %f; Current revenue: %f'%(currProb[0], currRevenue[0])
+
+    currProb[1] = model.predict_proba(np.array([1.0, 1.0, 0.0, 0.0, 0.0, FMFRate]))[0][1]
+    currRevenue[1] = (2.0 + durToMon(FMFDur))*currProb[1]*FMFRate
+    print 'First Month Free - Current prob: %f; Current revenue: %f'%(currProb[1], currRevenue[1])
+
+    currProb[2] = model.predict_proba(np.array([1.0, 0.0, 1.0, 0.0, 0.0, FMHORate]))[0][1]
+    currRevenue[2] = (2.5 + durToMon(FMHODur))*currProb[2]*FMHORate
+    print 'First Month Half Off - Current prob: %f; Current revenue: %f'%(currProb[2], currRevenue[2])
+
+    currProb[3] = model.predict_proba(np.array([1.0, 0.0, 0.0, 1.0, 0.0, TMFRate]))[0][1]
+    currRevenue[3] = (1.0 + durToMon(TwMFDur))*currProb[3]*TMFRate
+    print 'Two Months Free - Current prob: %f; Current revenue: %f'%(currProb[3], currRevenue[3])
+
+    currProb[4] = model.predict_proba(np.array([1.0, 0.0, 0.0, 0.0, 1.0, TwMHORate]))[0][1]
+    currRevenue[4] = (2.0 + durToMon(TwMHODur))*currProb[4]*TwMHORate
+    print 'Two Months Half Off - Current prob: %f; Current revenue: %f'%(currProb[4], currRevenue[4])
+
 if plt.plot:
     plt.figure(4, figsize=(args.width, args.height))
     plt.clf()
